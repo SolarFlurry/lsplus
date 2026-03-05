@@ -3,6 +3,7 @@
 `ls+` is a simple utility to replace the Unix utility `ls`.
 
 Example of `ls+`:
+
 ![Example Image](images/example.png)
 
 Better than `ls` because:
