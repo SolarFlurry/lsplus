@@ -72,8 +72,6 @@ pub fn main() !void {
     };
     defer dir.close();
 
-    var largest_entry_length: usize = 0;
-
     var iter = dir.iterate();
     var entries: std.ArrayList(std.fs.Dir.Entry) = .empty;
     while (try iter.next()) |entry| {
@@ -82,7 +80,6 @@ pub fn main() !void {
             .kind = entry.kind,
             .name = try allocator.dupe(u8, entry.name),
         });
-        if (entry.name.len > largest_entry_length) largest_entry_length = entry.name.len;
     }
 
     std.mem.sort(
@@ -97,6 +94,13 @@ pub fn main() !void {
             }
         }.lessThan,
     );
+
+    var largest_entry_length: usize = 0;
+
+    for (entries.items, 0..) |entry, i| {
+        if (i % 2 != 0) continue;
+        if (entry.name.len > largest_entry_length) largest_entry_length = entry.name.len;
+    }
 
     for (entries.items, 0..) |entry, i| {
         try output_stream.print(
