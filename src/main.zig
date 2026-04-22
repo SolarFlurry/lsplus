@@ -48,33 +48,38 @@ fn getIcon(path: []const u8) []const u8 {
     return getExtensionIcon(std.fs.path.extension(path));
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = arena.allocator();
     defer arena.deinit();
 
     var buffer: [1024]u8 = undefined;
-    var stdout = std.fs.File.stdout();
-    var output_stream = stdout.writer(&buffer).interface;
+    var stdout = std.Io.File.stdout().writer(init.io, &buffer);
+    const writer = &stdout.interface;
+    defer writer.flush() catch {};
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     defer args.deinit();
-
     _ = args.next();
+
     const path: []const u8 = if (args.next()) |arg|
         arg
     else
         ".";
-    var dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch {
-        try output_stream.print("Could not open {s}\n", .{path});
-        try output_stream.flush();
-        std.process.exit(1);
+    var dir = std.Io.Dir.cwd().openDir(init.io, path, .{ .iterate = true }) catch {
+        try writer.print("Could not open {s}\n", .{path});
+        return;
     };
-    defer dir.close();
+    defer dir.close(init.io);
+
+    const DirEntry = struct {
+        kind: std.Io.File.Kind,
+        name: []const u8,
+    };
 
     var iter = dir.iterate();
-    var entries: std.ArrayList(std.fs.Dir.Entry) = .empty;
-    while (try iter.next()) |entry| {
+    var entries: std.ArrayList(DirEntry) = .empty;
+    while (try iter.next(init.io)) |entry| {
         if (entry.kind != .directory and entry.kind != .file) continue;
         try entries.append(allocator, .{
             .kind = entry.kind,
@@ -83,11 +88,11 @@ pub fn main() !void {
     }
 
     std.mem.sort(
-        std.fs.Dir.Entry,
+        DirEntry,
         entries.items,
         {},
         struct {
-            fn lessThan(_: void, lhs: std.fs.Dir.Entry, rhs: std.fs.Dir.Entry) bool {
+            fn lessThan(_: void, lhs: DirEntry, rhs: DirEntry) bool {
                 if (lhs.kind == rhs.kind)
                     return std.mem.order(u8, lhs.name, rhs.name) == .lt;
                 return @intFromEnum(lhs.kind) < @intFromEnum(rhs.kind);
@@ -103,7 +108,7 @@ pub fn main() !void {
     }
 
     for (entries.items, 0..) |entry, i| {
-        try output_stream.print(
+        try writer.print(
             " {s} \x1b[0m \x1b[{s}m{s}\x1b[0m",
             .{
                 if (entry.kind == .directory) "\u{f07c}" else getIcon(entry.name),
@@ -113,14 +118,12 @@ pub fn main() !void {
         );
         if (i % 2 == 0) {
             for (0..(largest_entry_length - entry.name.len)) |_| {
-                try output_stream.writeByte(' ');
+                try writer.writeByte(' ');
             }
-            try output_stream.writeAll("  ");
+            try writer.writeAll("  ");
         } else {
-            try output_stream.writeByte('\n');
+            try writer.writeByte('\n');
         }
     }
-    try output_stream.writeByte('\n');
-
-    try output_stream.flush();
+    try writer.writeByte('\n');
 }
