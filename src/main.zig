@@ -44,6 +44,10 @@ const special_icons = std.StaticStringMap([]const u8).initComptime(.{
     .{ "LICENSE", "\x1b[38;5;226m\u{e60a}" },
 });
 
+const special_dir_icons = std.StaticStringMap([]const u8).initComptime(.{
+    .{ ".git", "\u{e5fb}" },
+});
+
 fn getExtensionIcon(extension: []const u8) []const u8 {
     if (extension_icons.get(extension)) |icon| return icon;
     return "\u{e64e}";
@@ -52,6 +56,11 @@ fn getExtensionIcon(extension: []const u8) []const u8 {
 fn getIcon(path: []const u8) []const u8 {
     if (special_icons.get(path)) |icon| return icon;
     return getExtensionIcon(std.fs.path.extension(path));
+}
+
+fn getDirIcon(path: []const u8) []const u8 {
+    if (special_dir_icons.get(path)) |icon| return icon;
+    return "\u{e5ff}";
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -117,7 +126,7 @@ pub fn main(init: std.process.Init) !void {
         try writer.print(
             " {s} \x1b[0m \x1b[{s}m{s}\x1b[0m",
             .{
-                if (entry.kind == .directory) "\u{f07c}" else getIcon(entry.name),
+                if (entry.kind == .directory) getDirIcon(entry.name) else getIcon(entry.name),
                 if (entry.kind == .directory) "1;36" else "0",
                 entry.name,
             },
