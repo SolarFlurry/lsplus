@@ -15,6 +15,11 @@ const extension_icons = std.StaticStringMap([]const u8).initComptime(.{
     .{ ".hpp", "\x1b[38;5;171m\u{f0672}" },
     .{ ".html", "\x1b[38;5;208m\u{e60e}" },
     .{ ".md", "\x1b[38;5;32m\u{e609}" },
+    .{ ".vim", "\x1b[38;5;34m\u{e7c5}" },
+    .{ ".py", "\x1b[38;5;31m\u{e73c}" },
+    .{ ".toml", "\x1b[38;5;130m\u{e6b2}" },
+    .{ ".swift", "\x1b[38;5;203m\u{e699}" },
+    .{ ".lua", "\x1b[38;5;27m\u{e620}" },
 
     .{ ".sh", "\x1b[38;5;154m\u{e691}" },
     .{ ".zsh", "\x1b[38;5;154m\u{e691}" },
@@ -34,6 +39,7 @@ const special_icons = std.StaticStringMap([]const u8).initComptime(.{
     .{ "tsconfig.json", "\x1b[38;5;12m\u{e8ca}" },
     .{ "CMakeLists.txt", "\x1b[38;5;154m\u{e794}" },
     .{ "go.mod", "\x1b[38;5;12m\u{f07d3}" },
+    .{ ".vimrc", "\x1b[38;5;34m\u{e7c5}" },
     .{ "COPYING", "\x1b[38;5;226m\u{e60a}" },
     .{ "LICENSE", "\x1b[38;5;226m\u{e60a}" },
 });
