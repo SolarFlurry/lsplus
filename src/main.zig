@@ -81,8 +81,10 @@ pub fn main(init: std.process.Init) !void {
         arg
     else
         ".";
-    var dir = std.Io.Dir.cwd().openDir(init.io, path, .{ .iterate = true }) catch {
-        try writer.print("Could not open {s}\n", .{path});
+    var dir = std.Io.Dir.cwd().openDir(init.io, path, .{ .iterate = true }) catch |err| {
+        if (err == error.NotDir) {
+            try writer.print("{s}\n", .{path});
+        } else try writer.print("ls: {s}: No such file or directory\n", .{path});
         return;
     };
     defer dir.close(init.io);
