@@ -46,6 +46,7 @@ const special_icons = std.StaticStringMap([]const u8).initComptime(.{
 
 const special_dir_icons = std.StaticStringMap([]const u8).initComptime(.{
     .{ ".git", "\u{e5fb}" },
+    .{ "node_modules", "\u{ed44}" },
 });
 
 fn getExtensionIcon(extension: []const u8) []const u8 {
@@ -61,6 +62,11 @@ fn getIcon(path: []const u8) []const u8 {
 fn getDirIcon(path: []const u8) []const u8 {
     if (special_dir_icons.get(path)) |icon| return icon;
     return "\u{e5ff}";
+}
+
+fn getSymlinkIcon(path: []const u8) []const u8 {
+    _ = path;
+    return "\u{f17a9}";
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -97,7 +103,7 @@ pub fn main(init: std.process.Init) !void {
     var iter = dir.iterate();
     var entries: std.ArrayList(DirEntry) = .empty;
     while (try iter.next(init.io)) |entry| {
-        if (entry.kind != .directory and entry.kind != .file) continue;
+        if (entry.kind != .directory and entry.kind != .file and entry.kind != .sym_link) continue;
         try entries.append(allocator, .{
             .kind = entry.kind,
             .name = try allocator.dupe(u8, entry.name),
@@ -128,8 +134,18 @@ pub fn main(init: std.process.Init) !void {
         try writer.print(
             " {s} \x1b[0m \x1b[{s}m{s}\x1b[0m",
             .{
-                if (entry.kind == .directory) getDirIcon(entry.name) else getIcon(entry.name),
-                if (entry.kind == .directory) "1;36" else "0",
+                switch (entry.kind) {
+                    .directory => getDirIcon(entry.name),
+                    .file => getIcon(entry.name),
+                    .sym_link => getSymlinkIcon(entry.name),
+                    else => unreachable,
+                },
+                switch (entry.kind) {
+                    .directory => "1;36",
+                    .file => "0",
+                    .sym_link => "35",
+                    else => unreachable,
+                },
                 entry.name,
             },
         );
