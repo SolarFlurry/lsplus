@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
 const extension_icons = std.StaticStringMap([]const u8).initComptime(.{
     .{ ".zig", "\x1b[38;5;214m\u{e8ef}" },
@@ -69,6 +70,106 @@ fn getSymlinkIcon(path: []const u8) []const u8 {
     return "\u{f17a9}";
 }
 
+fn listDir(
+    io: std.Io,
+    gpa: Allocator,
+    writer: *std.Io.Writer,
+    dir: *std.Io.Dir,
+    cols: u8,
+) !void {
+    var iter = dir.iterate();
+
+    const DirEntry = struct {
+        kind: std.Io.File.Kind,
+        name: []const u8,
+    };
+
+    var entries: std.ArrayList(DirEntry) = .empty;
+    while (try iter.next(io)) |entry| {
+        if (entry.kind != .directory and entry.kind != .file and entry.kind != .sym_link) continue;
+        try entries.append(gpa, .{
+            .kind = entry.kind,
+            .name = try gpa.dupe(u8, entry.name),
+        });
+    }
+
+    std.mem.sort(
+        DirEntry,
+        entries.items,
+        {},
+        struct {
+            fn lessThan(_: void, lhs: DirEntry, rhs: DirEntry) bool {
+                if (lhs.kind == rhs.kind)
+                    return std.mem.order(u8, lhs.name, rhs.name) == .lt;
+                return @intFromEnum(lhs.kind) < @intFromEnum(rhs.kind);
+            }
+        }.lessThan,
+    );
+
+    const Column = struct {
+        entries: []const DirEntry,
+        width: usize,
+    };
+
+    var columns = try gpa.alloc(Column, cols);
+
+    const col_length = entries.items.len / cols;
+    const col_remainder = entries.items.len % cols;
+
+    var total_length: usize = 0;
+
+    for (0..cols) |i| {
+        const prev_length = total_length;
+
+        total_length += col_length;
+        if (i < col_remainder) total_length += 1;
+        columns[i].entries = entries.items[prev_length..total_length];
+    }
+
+    for (columns) |*column| {
+        var largest_entry_length: usize = 0;
+
+        for (column.entries) |entry| {
+            if (entry.name.len > largest_entry_length) largest_entry_length = entry.name.len;
+        }
+
+        column.width = largest_entry_length;
+    }
+
+    outer: for (0..col_length + 1) |i| {
+        for (columns) |column| {
+            if (i >= column.entries.len) {
+                try writer.writeByte('\n');
+                break :outer;
+            }
+
+            const entry = column.entries[i];
+            try writer.print(
+                " {s} \x1b[0m \x1b[{s}m{s}\x1b[0m",
+                .{
+                    switch (entry.kind) {
+                        .directory => getDirIcon(entry.name),
+                        .file => getIcon(entry.name),
+                        .sym_link => getSymlinkIcon(entry.name),
+                        else => unreachable,
+                    },
+                    switch (entry.kind) {
+                        .directory => "1;36",
+                        .file => "0",
+                        .sym_link => "35",
+                        else => unreachable,
+                    },
+                    entry.name,
+                },
+            );
+
+            try writer.splatByteAll(' ', column.width - entry.name.len);
+            try writer.writeAll("  ");
+        }
+        try writer.writeByte('\n');
+    }
+}
+
 pub fn main(init: std.process.Init) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = arena.allocator();
@@ -87,7 +188,11 @@ pub fn main(init: std.process.Init) !void {
         arg
     else
         ".";
-    var dir = std.Io.Dir.cwd().openDir(init.io, path, .{ .iterate = true }) catch |err| {
+    var dir = std.Io.Dir.cwd().openDir(
+        init.io,
+        path,
+        .{ .iterate = true },
+    ) catch |err| {
         if (err == error.NotDir) {
             try writer.print("{s}\n", .{path});
         } else try writer.print("ls: {s}: No such file or directory\n", .{path});
@@ -95,68 +200,5 @@ pub fn main(init: std.process.Init) !void {
     };
     defer dir.close(init.io);
 
-    const DirEntry = struct {
-        kind: std.Io.File.Kind,
-        name: []const u8,
-    };
-
-    var iter = dir.iterate();
-    var entries: std.ArrayList(DirEntry) = .empty;
-    while (try iter.next(init.io)) |entry| {
-        if (entry.kind != .directory and entry.kind != .file and entry.kind != .sym_link) continue;
-        try entries.append(allocator, .{
-            .kind = entry.kind,
-            .name = try allocator.dupe(u8, entry.name),
-        });
-    }
-
-    std.mem.sort(
-        DirEntry,
-        entries.items,
-        {},
-        struct {
-            fn lessThan(_: void, lhs: DirEntry, rhs: DirEntry) bool {
-                if (lhs.kind == rhs.kind)
-                    return std.mem.order(u8, lhs.name, rhs.name) == .lt;
-                return @intFromEnum(lhs.kind) < @intFromEnum(rhs.kind);
-            }
-        }.lessThan,
-    );
-
-    var largest_entry_length: usize = 0;
-
-    for (entries.items, 0..) |entry, i| {
-        if (i % 2 != 0) continue;
-        if (entry.name.len > largest_entry_length) largest_entry_length = entry.name.len;
-    }
-
-    for (entries.items, 0..) |entry, i| {
-        try writer.print(
-            " {s} \x1b[0m \x1b[{s}m{s}\x1b[0m",
-            .{
-                switch (entry.kind) {
-                    .directory => getDirIcon(entry.name),
-                    .file => getIcon(entry.name),
-                    .sym_link => getSymlinkIcon(entry.name),
-                    else => unreachable,
-                },
-                switch (entry.kind) {
-                    .directory => "1;36",
-                    .file => "0",
-                    .sym_link => "35",
-                    else => unreachable,
-                },
-                entry.name,
-            },
-        );
-        if (i % 2 == 0) {
-            for (0..(largest_entry_length - entry.name.len)) |_| {
-                try writer.writeByte(' ');
-            }
-            try writer.writeAll("  ");
-        } else {
-            try writer.writeByte('\n');
-        }
-    }
-    try writer.writeByte('\n');
+    try listDir(init.io, allocator, writer, &dir, 3);
 }
